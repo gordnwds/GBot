@@ -5,4 +5,4 @@ langchain-google-genai
 pypdf
 faiss-cpu
 openai
-streamlit-TTS
+gTTS
