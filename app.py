@@ -106,8 +106,7 @@ with st.chat_message("assistant"):
     
     # Play the audio
     st.audio(audio_fp, format="audio/mp3", autoplay=True)
-            
-        st.session_state.messages.append({"role": "assistant", "content": bot_text})
+
 
 else:
     st.warning("Please enter your Gemini API Key in the sidebar to start.")
