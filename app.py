@@ -7,6 +7,10 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 import os
+from gtts import gTTS
+import io
+
+# ... inside your chat logic ...
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Ultimate Personal AI", page_icon="🧠", layout="wide")
@@ -89,8 +93,19 @@ if gemini_key:
             
             st.markdown(bot_text)
             
-            # Voice Output
-            text_to_speech(bot_text, language='en')
+                        
+
+# 3. SPEECH OUTPUT (The gTTS Way)
+with st.chat_message("assistant"):
+    st.write(bot_reply)
+    
+    # Create the audio in memory
+    tts = gTTS(text=bot_reply, lang='en')
+    audio_fp = io.BytesIO()
+    tts.write_to_fp(audio_fp)
+    
+    # Play the audio
+    st.audio(audio_fp, format="audio/mp3", autoplay=True)
             
         st.session_state.messages.append({"role": "assistant", "content": bot_text})
 
