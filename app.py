@@ -27,7 +27,7 @@ if api_key:
             chunks = text_splitter.split_documents(docs)
             
             # Use Google's embeddings (free tier)
-            embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
+            embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", google_api_key=api_key)
             vector_db = FAISS.from_documents(chunks, embeddings)
             st.sidebar.success("Ready!")
 
@@ -49,7 +49,7 @@ if api_key:
             context = "\n".join([d.page_content for d in docs])
 
         # Generate with Gemini
-        model = genai.GenerativeModel('gemini-3-flash')
+        model = genai.GenerativeModel('gemini-3-flash-preview')
         full_query = f"Context: {context}\n\nQuestion: {prompt}"
         response = model.generate_content(full_query)
         
