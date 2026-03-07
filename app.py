@@ -20,6 +20,9 @@ with st.sidebar:
     openai_key = st.text_input("OpenAI Key (Whisper)", type="password")
     
     st.divider()
+    auto_play_voice = st.checkbox("Autoplay Bot Voice", value=False)
+    
+    st.divider()
     persona = st.text_area("System Persona", 
                           value="You are a brilliant AI assistant. Use provided context to be precise.")
     
@@ -98,7 +101,7 @@ if gemini_key:
             tts = gTTS(text=bot_text, lang='en')
             audio_mem = io.BytesIO()
             tts.write_to_fp(audio_mem)
-            st.audio(audio_mem, format="audio/mp3", autoplay=True)
+            st.audio(audio_mem, format="audio/mp3", autoplay=auto_play_voice)
 
         st.session_state.messages.append({"role": "assistant", "content": bot_text})
 else:
