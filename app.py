@@ -49,7 +49,7 @@ if api_key:
             context = "\n".join([d.page_content for d in docs])
 
         # Generate with Gemini
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-3-flash')
         full_query = f"Context: {context}\n\nQuestion: {prompt}"
         response = model.generate_content(full_query)
         
