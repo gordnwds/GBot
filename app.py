@@ -1,112 +1,105 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 from openai import OpenAI
-from streamlit_TTS import text_to_speech
+from gtts import gTTS
+import io
+import os
+
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-import os
-from gtts import gTTS
-import io
 
-# ... inside your chat logic ...
+# --- PAGE SETUP ---
+st.set_page_config(page_title="Gemini 3 Personal Assistant", page_icon="⚡", layout="wide")
 
-# --- PAGE CONFIG ---
-st.set_page_config(page_title="Ultimate Personal AI", page_icon="🧠", layout="wide")
-
-# --- SIDEBAR: SETTINGS & KNOWLEDGE ---
+# --- SIDEBAR: KEYS & PERSONA ---
 with st.sidebar:
-    st.title("⚙️ Configuration")
+    st.title("🤖 Bot Settings")
     gemini_key = st.text_input("Gemini API Key", type="password")
-    openai_key = st.text_input("OpenAI Key (for Voice)", type="password")
+    openai_key = st.text_input("OpenAI Key (Whisper)", type="password")
     
     st.divider()
-    
-    st.header("🎭 Personality")
-    persona = st.text_area("Define the bot's character:", 
-                          value="You are a helpful, witty assistant.")
+    persona = st.text_area("System Persona", 
+                          value="You are a brilliant AI assistant. Use provided context to be precise.")
     
     st.divider()
-    
-    st.header("📂 Knowledge Base")
-    uploaded_file = st.file_uploader("Upload a PDF", type="pdf")
+    uploaded_file = st.file_uploader("Upload PDF Knowledge", type="pdf")
 
-# --- CORE LOGIC ---
+# --- INITIALIZATION ---
 if gemini_key:
-    # Initialize Google AI
-    genai.configure(api_key=gemini_key)
-    model = genai.GenerativeModel('gemini-3-flash-preview', system_instruction=persona)
+    # Initialize the New 2026 Google GenAI Client
+    client = genai.Client(api_key=gemini_key)
     
-    # Process PDF for RAG
+    # Process RAG (Memory)
     if uploaded_file and "vector_db" not in st.session_state:
-        with st.status("Reading your document..."):
+        with st.status("Indexing Knowledge..."):
             with open("temp.pdf", "wb") as f:
                 f.write(uploaded_file.getvalue())
+            
             loader = PyPDFLoader("temp.pdf")
-            chunks = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100).split_documents(loader.load())
-            embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", google_api_key=gemini_key)
+            docs = loader.load()
+            chunks = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100).split_documents(docs)
+            
+            # Use the NEW stable embedding model name
+            embeddings = GoogleGenerativeAIEmbeddings(
+                model="gemini-embedding-001", 
+                google_api_key=gemini_key
+            )
             st.session_state.vector_db = FAISS.from_documents(chunks, embeddings)
-            st.success("Knowledge loaded!")
+            st.success("PDF Knowledge Active!")
 
-    # --- CHAT INTERFACE ---
+    # --- CHAT UI ---
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Display History
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
-    # --- INPUT HANDLING (Voice or Text) ---
-    user_input = None
+    # --- INPUT: VOICE OR TEXT ---
+    user_query = None
     
-    # Voice Input Widget
-    audio_data = st.audio_input("Tap to speak")
-    if audio_data and openai_key:
-        client = OpenAI(api_key=openai_key)
-        with st.spinner("Listening..."):
-            transcript = client.audio.transcriptions.create(model="whisper-1", file=audio_data)
-            user_input = transcript.text
+    # 2026 Native Audio Input
+    audio_input = st.audio_input("Speak to your bot")
+    if audio_input and openai_key:
+        o_client = OpenAI(api_key=openai_key)
+        with st.spinner("Transcribing..."):
+            transcript = o_client.audio.transcriptions.create(model="whisper-1", file=audio_input)
+            user_query = transcript.text
     
-    # Text Input (if no voice recorded)
-    if not user_input:
-        user_input = st.chat_input("Message your AI...")
+    if not user_query:
+        user_query = st.chat_input("Ask a question...")
 
     # --- GENERATION ---
-    if user_input:
-        st.session_state.messages.append({"role": "user", "content": user_input})
+    if user_query:
+        st.session_state.messages.append({"role": "user", "content": user_query})
         with st.chat_message("user"):
-            st.markdown(user_input)
+            st.markdown(user_query)
 
         with st.chat_message("assistant"):
-            # Get context from PDF if available
+            # Pull context from PDF
             context = ""
             if "vector_db" in st.session_state:
-                docs = st.session_state.vector_db.similarity_search(user_input, k=3)
-                context = "\n".join([d.page_content for d in docs])
+                search_results = st.session_state.vector_db.similarity_search(user_query, k=3)
+                context = "\n".join([r.page_content for r in search_results])
+
+            # Generate response with Gemini 3 Flash
+            full_prompt = f"SYSTEM: {persona}\nCONTEXT: {context}\nUSER: {user_query}"
             
-            # Formulate prompt and get response
-            full_prompt = f"Context: {context}\n\nQuestion: {user_input}"
-            response = model.generate_content(full_prompt)
+            response = client.models.generate_content(
+                model="gemini-3-flash-preview",
+                contents=full_prompt
+            )
             bot_text = response.text
-            
             st.markdown(bot_text)
-            
-                        
 
-# 3. SPEECH OUTPUT (The gTTS Way)
-with st.chat_message("assistant"):
-    st.write(bot_reply)
-    
-    # Create the audio in memory
-    tts = gTTS(text=bot_reply, lang='en')
-    audio_fp = io.BytesIO()
-    tts.write_to_fp(audio_fp)
-    
-    # Play the audio
-    st.audio(audio_fp, format="audio/mp3", autoplay=True)
+            # Voice Output (Stable gTTS Method)
+            tts = gTTS(text=bot_text, lang='en')
+            audio_mem = io.BytesIO()
+            tts.write_to_fp(audio_mem)
+            st.audio(audio_mem, format="audio/mp3", autoplay=True)
 
-
+        st.session_state.messages.append({"role": "assistant", "content": bot_text})
 else:
-    st.warning("Please enter your Gemini API Key in the sidebar to start.")
+    st.info("Please enter your Gemini API key in the sidebar to wake up the bot.")
