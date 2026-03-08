@@ -1,8 +1,9 @@
 streamlit
 google-generativeai
+google-cloud-speech
+google-auth
 langchain-community
 langchain-google-genai
 pypdf
 faiss-cpu
-openai
 gTTS

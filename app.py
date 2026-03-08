@@ -1,84 +1,58 @@
 import streamlit as st
 from google import genai
 from google.cloud import speech
+from google.oauth2 import service_account
 from gtts import gTTS
-import os
+import io
 import json
+import os
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-# --- 1. AUTHENTICATION ---
-# For Local: Point to your JSON file
-# For Cloud: You'll paste the JSON content into Streamlit Secrets
-if "google_creds" in st.secrets:
-    # This part is for when you deploy to Streamlit Cloud
-    creds_dict = json.loads(st.secrets["google_creds"])
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "google_creds.json"
-    with open("google_creds.json", "w") as f:
-        json.dump(creds_dict, f)
-
-def transcribe_with_google(audio_bytes):
-    client = speech.SpeechClient()
-    
-    audio = speech.RecognitionAudio(content=audio_bytes)
-    config = speech.RecognitionConfig(
-        encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-        sample_rate_hertz=16000, # Match st.audio_input default
-        language_code="en-US",
-    )
-
-    response = client.recognize(config=config, audio=audio)
-    
-    for result in response.results:
-        return result.alternatives[0].transcript
-    return None
-
 # --- PAGE SETUP ---
-st.set_page_config(page_title="Gemini 3 Personal Assistant", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="Google-Native AI Bot", page_icon="☁️", layout="wide")
 
-# --- SIDEBAR: KEYS & PERSONA ---
+# --- AUTHENTICATION HELPER ---
+def get_google_speech_client():
+    # If on Streamlit Cloud, use Secrets
+    if "google_creds" in st.secrets:
+        creds_info = json.loads(st.secrets["google_creds"])
+        creds = service_account.Credentials.from_service_account_info(creds_info)
+        return speech.SpeechClient(credentials=creds)
+    # If local, it looks for the file
+    return speech.SpeechClient()
+
+# --- SIDEBAR ---
 with st.sidebar:
-    st.title("🤖 Bot Settings")
+    st.title("⚙️ Settings")
     gemini_key = st.text_input("Gemini API Key", type="password")
-    openai_key = st.text_input("OpenAI Key (Whisper)", type="password")
+    st.info("Note: Google Speech-to-Text uses the JSON key in your Streamlit Secrets.")
     
     st.divider()
-    auto_play_voice = st.checkbox("Autoplay Bot Voice", value=False)
-    
-    st.divider()
-    persona = st.text_area("System Persona", 
-                          value="You are a brilliant AI assistant. Use provided context to be precise.")
-    
-    st.divider()
+    persona = st.text_area("Bot Persona", value="You are a helpful assistant.")
     uploaded_file = st.file_uploader("Upload PDF Knowledge", type="pdf")
+    auto_play = st.checkbox("Autoplay Voice", value=False)
 
-# --- INITIALIZATION ---
+# --- APP LOGIC ---
 if gemini_key:
-    # Initialize the New 2026 Google GenAI Client
+    # Initialize Gemini 3
     client = genai.Client(api_key=gemini_key)
     
-    # Process RAG (Memory)
+    # RAG Indexing
     if uploaded_file and "vector_db" not in st.session_state:
-        with st.status("Indexing Knowledge..."):
+        with st.status("Indexing PDF..."):
             with open("temp.pdf", "wb") as f:
                 f.write(uploaded_file.getvalue())
-            
             loader = PyPDFLoader("temp.pdf")
-            docs = loader.load()
-            chunks = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100).split_documents(docs)
-            
-            # Use the NEW stable embedding model name
-            embeddings = GoogleGenerativeAIEmbeddings(
-                model="gemini-embedding-001", 
-                google_api_key=gemini_key
-            )
+            chunks = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100).split_documents(loader.load())
+            embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", google_api_key=gemini_key)
             st.session_state.vector_db = FAISS.from_documents(chunks, embeddings)
-            st.success("PDF Knowledge Active!")
+            st.success("Knowledge Base Ready!")
 
-    # --- CHAT UI ---
+    # Chat History
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
@@ -86,49 +60,60 @@ if gemini_key:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # --- INPUT: VOICE OR TEXT ---
+    # --- INPUT: GOOGLE SPEECH-TO-TEXT ---
     user_query = None
-    
-    # 2026 Native Audio Input
-    audio_data = st.audio_input("Speak to your bot")
+    audio_input = st.audio_input("Speak to your bot")
 
-if audio_data:
-    with st.spinner("Google is listening..."):
-        # Google needs the raw bytes
-        user_query = transcribe_with_google(audio_data.getvalue())
-    
+    if audio_input:
+        with st.spinner("Google Cloud transcribing..."):
+            try:
+                speech_client = get_google_speech_client()
+                audio_content = audio_input.getvalue()
+                
+                audio = speech.RecognitionAudio(content=audio_content)
+                config = speech.RecognitionConfig(
+                    encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+                    language_code="en-US",
+                    enable_automatic_punctuation=True
+                )
+
+                response = speech_client.recognize(config=config, audio=audio)
+                if response.results:
+                    user_query = response.results[0].alternatives[0].transcript
+                else:
+                    st.error("Google couldn't hear anything. Try speaking louder!")
+            except Exception as e:
+                st.error(f"Google Speech Error: {e}")
+
     if not user_query:
-        user_query = st.chat_input("Ask a question...")
+        user_query = st.chat_input("Or type here...")
 
-    # --- GENERATION ---
+    # --- RESPONSE GENERATION ---
     if user_query:
         st.session_state.messages.append({"role": "user", "content": user_query})
         with st.chat_message("user"):
             st.markdown(user_query)
 
         with st.chat_message("assistant"):
-            # Pull context from PDF
             context = ""
             if "vector_db" in st.session_state:
-                search_results = st.session_state.vector_db.similarity_search(user_query, k=3)
-                context = "\n".join([r.page_content for r in search_results])
+                results = st.session_state.vector_db.similarity_search(user_query, k=3)
+                context = "\n".join([r.page_content for r in results])
 
-            # Generate response with Gemini 3 Flash
             full_prompt = f"SYSTEM: {persona}\nCONTEXT: {context}\nUSER: {user_query}"
             
-            response = client.models.generate_content(
+            # Using Gemini 3 Flash
+            resp = client.models.generate_content(
                 model="gemini-3-flash-preview",
                 contents=full_prompt
             )
-            bot_text = response.text
+            bot_text = resp.text
             st.markdown(bot_text)
 
-            # Voice Output (Stable gTTS Method)
+            # Voice Out
             tts = gTTS(text=bot_text, lang='en')
             audio_mem = io.BytesIO()
             tts.write_to_fp(audio_mem)
-            st.audio(audio_mem, format="audio/mp3", autoplay=auto_play_voice)
+            st.audio(audio_mem, format="audio/mp3", autoplay=auto_play)
 
         st.session_state.messages.append({"role": "assistant", "content": bot_text})
-else:
-    st.info("Please enter your Gemini API key in the sidebar to wake up the bot.")
