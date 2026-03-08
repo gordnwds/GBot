@@ -1,14 +1,40 @@
 import streamlit as st
 from google import genai
-from openai import OpenAI
+from google.cloud import speech
 from gtts import gTTS
-import io
 import os
+import json
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
+# --- 1. AUTHENTICATION ---
+# For Local: Point to your JSON file
+# For Cloud: You'll paste the JSON content into Streamlit Secrets
+if "google_creds" in st.secrets:
+    # This part is for when you deploy to Streamlit Cloud
+    creds_dict = json.loads(st.secrets["google_creds"])
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "google_creds.json"
+    with open("google_creds.json", "w") as f:
+        json.dump(creds_dict, f)
+
+def transcribe_with_google(audio_bytes):
+    client = speech.SpeechClient()
+    
+    audio = speech.RecognitionAudio(content=audio_bytes)
+    config = speech.RecognitionConfig(
+        encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+        sample_rate_hertz=16000, # Match st.audio_input default
+        language_code="en-US",
+    )
+
+    response = client.recognize(config=config, audio=audio)
+    
+    for result in response.results:
+        return result.alternatives[0].transcript
+    return None
 
 # --- PAGE SETUP ---
 st.set_page_config(page_title="Gemini 3 Personal Assistant", page_icon="⚡", layout="wide")
@@ -64,12 +90,12 @@ if gemini_key:
     user_query = None
     
     # 2026 Native Audio Input
-    audio_input = st.audio_input("Speak to your bot")
-    if audio_input and openai_key:
-        o_client = OpenAI(api_key=openai_key)
-        with st.spinner("Transcribing..."):
-            transcript = o_client.audio.transcriptions.create(model="whisper-1", file=audio_input)
-            user_query = transcript.text
+    audio_data = st.audio_input("Speak to your bot")
+
+if audio_data:
+    with st.spinner("Google is listening..."):
+        # Google needs the raw bytes
+        user_query = transcribe_with_google(audio_data.getvalue())
     
     if not user_query:
         user_query = st.chat_input("Ask a question...")
