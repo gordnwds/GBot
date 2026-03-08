@@ -105,23 +105,23 @@ if gemini_key:
             
             # Using Gemini 3 Flash
             # --- AUTO-RETRY LOGIC FOR 503 ERRORS ---
-    bot_text = ""
-    for attempt in range(3): # Try up to 3 times
-        try:
-            resp = client.models.generate_content(
-                model="gemini-3-flash-preview",
-                contents=full_prompt
-            )
-            bot_text = resp.text
-            break # Success!  Exit the loop
-        except Exception as e:
-            if "503" in str(e) or "overloaded" in str(e):
-                st.warning(f"Server busy (Attempt {attempt+1}/3). Retrying...")
-                time.sleep(2 ** attempt) # Wait 1s, then 2s
-            else:
-                st.error(f"Error: {e}")
-                break
-            
+             bot_text = ""
+            for attempt in range(3): # Try up to 3 times
+            try:
+                resp = client.models.generate_content(
+                    model="gemini-3-flash-preview",
+                    contents=full_prompt
+                )
+                 bot_text = resp.text
+                break # Success!  Exit the loop
+            except Exception as e:
+                if "503" in str(e) or "overloaded" in str(e):
+                    st.warning(f"Server busy (Attempt {attempt+1}/3). Retrying...")
+                    time.sleep(2 ** attempt) # Wait 1s, then 2s
+                else:
+                    st.error(f"Error: {e}")
+                    break
+
         if bot_text:
             st.markdown(bot_text)
 
