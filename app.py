@@ -123,12 +123,22 @@ if gemini_key:
                         break
 
         if bot_text:
-            st.markdown(bot_text)
+            # Put the text and button side-by-side
+            col1, col2 = st.columns([0.8, 0.2])
+            with col1:
+                st.markdown(bot_text)
 
-            # Voice Out
-            tts = gTTS(text=bot_text, lang='en')
-            audio_mem = io.BytesIO()
-            tts.write_to_fp(audio_mem)
-            st.audio(audio_mem, format="audio/mp3", autoplay=auto_play)
+            # Only show the button if there is text to speak
+            with col2:
+                if st.button("🔊 Read Aloud"):
+                    with st.spinner("Generating audio..."):
+                        # Create the audio in memory
+                        tts = gTTS(text=bot_text, lang='en')
+                        audio_mem = io.BytesIO()
+                        tts.write_to_fp(audio_mem)
+                        
+                        # Play the audio (Autoplay is True here so it plays 
+                        # immediately AFTER you click the button)
+                        st.audio(audio_mem, format="audio/mp3", autoplay=True)
 
         st.session_state.messages.append({"role": "assistant", "content": bot_text})
