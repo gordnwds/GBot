@@ -34,8 +34,23 @@ with st.sidebar:
     
     st.divider()
     persona = st.text_area("Bot Persona", value="You are a helpful assistant.")
-    uploaded_file = st.file_uploader("Upload PDF Knowledge", type="pdf")
     auto_play = st.checkbox("Autoplay Voice", value=False)
+    st.divider()
+    uploaded_file = st.file_uploader("Upload PDF Knowledge", type="pdf")
+    st.divider()
+    st.header("🔊 Voice Settings")
+    
+    # Mapping friendly names to Google's TLDs
+    voice_options = {
+        "United States (Default)": "com",
+        "United Kingdom": "co.uk",
+        "Australia": "com.au",
+        "India": "co.in",
+        "Canada": "ca"
+    }
+    
+    selected_voice = st.selectbox("Pick an accent:", list(voice_options.keys()))
+    tld_to_use = voice_options[selected_voice]
 
 # --- APP LOGIC ---
 if gemini_key:
@@ -133,7 +148,7 @@ if gemini_key:
                 if st.button("🔊 Read Aloud"):
                     with st.spinner("Generating audio..."):
                         # Create the audio in memory
-                        tts = gTTS(text=bot_text, lang='en')
+                        tts = gTTS(text=bot_text, lang='en', tld=tld_to_use)
                         audio_mem = io.BytesIO()
                         tts.write_to_fp(audio_mem)
                         
